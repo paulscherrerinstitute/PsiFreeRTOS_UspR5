@@ -68,7 +68,7 @@ void Task_Menu(void* arg_p) {
 	PsiFreeRTOS_printf("m Failing memory allocation\r\n");
 	PsiFreeRTOS_printf("h Print Heap\r\n");
 	PsiFreeRTOS_printf("i Infinite loop detection\r\n");
-	char c = getchar();
+	char c = inbyte();
 
 	//Create tasks always required
 	xTaskCreate(Task_NoLoad, "NoLoad1", 400, NULL, 1, NULL);
@@ -127,6 +127,7 @@ void Task_Menu(void* arg_p) {
 	default:
 		break;
 	}
+	PsiFreeRTOS_printf("Test Done!\r\n");
 
 	//Stop everything after test
 	vTaskSuspendAll();

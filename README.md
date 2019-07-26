@@ -78,7 +78,7 @@ To achieve this, *PsiFreeRTOS* registers the hooks *vApplicationIdleHook()* and 
 
 1. Add this repository to your project as submodule.
 2. In your application project, include the *src* folder of this repository as include and source paths
-3. Create a *FreeRTOSConfig.h* in your application (or copy it from the refdesign of this repo)
+3. Create a *FreeRTOSConfig.h* in your application (or copy it from the refdesign of this repo). This file is application specific since each application may configure FreeRTOS differently.
 4. Add the path of the *FreeRTOSConfig.h* file to the include paths of your project
 5. Before starting the scheduler, call *PsiFreeRTOS\_Init()* to initialize the PSI specific code
 
