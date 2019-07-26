@@ -1,0 +1,3 @@
+#Exclude files that are re-generated automatically
+psu_cortexr5_*
+

@@ -1,0 +1,8 @@
+#Eclipse workspaces of reference designs
+refdesign/*/ws
+
+#Build Artifacts
+refdesign/**/Debug
+
+#Temporary Files
+*~
