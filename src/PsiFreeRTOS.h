@@ -14,8 +14,22 @@ typedef enum {
 	PsiFreeRTOS_FatalReason_StackOvervflow = 1,
 	PsiFreeRTOS_FatalReason_MallocFailed = 2,
 	PsiFreeRTOS_FatalReason_InfiniteLoop = 3,
+	PsiFreeRTOS_FatalReason_CreatedTooManyTasks = 4
 } PsiFreeRTOS_FatalReason;
+
+/**
+ * @brief	Handler function for fatal errors. The code must not block and not depend on any
+ * 			FreeRTOs functionality (the system may be fully instable)
+ *
+ * @param 	reason	Reson for the fatal error
+ */
 typedef void (*PsiFreeRTOS_FatalHandler)(const PsiFreeRTOS_FatalReason reason);
+
+/**
+ * @brief	User code to be executed in the Tick-Hook (the FreeRTOS Tick-Hook is occupied
+ * 			by PSI specific functionality)
+ */
+typedef void (*PsiFreeRTOS_TickHandler)(void);
 
 /*******************************************************************************************
  * Macros for thread-safe printing
@@ -44,18 +58,17 @@ SemaphoreHandle_t PsiFreeRTOS_printMutex;
  * @brief	This function must be called before the FreeRTOS Scheduler is started to initialize
  * 			the PSI specific additions to FreeRTOS.
  *
- * @param maxTasks				Maximum number of tasks supported by the PSI additions
- * @param maxTicksWithoutIdle	If the idle task is not executed for this time, an inifinite loop is detected
- * 							    and an error is produced.
  * @param fatalHandler_p		User handler function for fatal errors. When non-recoverable fatal errors (e.g. stack overflow) occur,
  *                              an error is printed an all tasks are stopped. Additionally the user can register a handler function to
  *                              do project specific fatal-error-handler (e.g. switch on a red LED).
  *                              It is important that the handler function does only contain bare-metal code and does neither block nor
  *                              rely on any tasks or the scheduler itself.
+ *                              Pass NULL if unused.
+ * @param tickHandler_p			Function to be called on every tick (since FreeRTOS tick hook is occupied by PsiFreeRTOS).
+ * 								Pass NULL if unused.
  */
-void PsiFreeRTOS_Init(	const uint16_t maxTasks,
-						const uint16_t maxTicksWithoutIdle,
-						PsiFreeRTOS_FatalHandler fatalHandler_p);
+void PsiFreeRTOS_Init(	PsiFreeRTOS_FatalHandler fatalHandler_p,
+						PsiFreeRTOS_TickHandler tickHandler_p);
 
 #if INCLUDE_uxTaskGetStackHighWaterMark
 	/**
@@ -74,10 +87,14 @@ void PsiFreeRTOS_Init(	const uint16_t maxTasks,
 	 *        This function does not affect the realtime behavior (in contrast to vTaskList()).
 	 */
 	void PsiFreeRTOS_PrintCpuUsage();
+
 	/**
-	 * @brief Starting a CPU usage measurement.
+	 * @brief 	Get the CPU load for a given task handle
+	 *
+	 * @param 	task_p	Task to get the CPU load for
+	 * @return 			CPU load in percent
 	 */
-	void PsiFreeRTOS_StartCpuUsageMeas();
+	uint8_t PsiFreeRTOS_GetCpuLoad(TaskHandle_t task_p);
 #endif
 
 /**

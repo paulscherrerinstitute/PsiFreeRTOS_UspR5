@@ -55,7 +55,7 @@ To overcome this issue, real-time friendly printing functions are added. They re
 
 Additionally the *PsiFreeRTOS* code sets-up a timer for the run-time measurement (this is missing in the Xilinx BSP). 
 
-To measure the CPU usage of all tasks and print it to the console, start the measurement using *PsiFreeRTOS_StartCpuUsageMeas()*, wait for some time and then call *PsiFreeRTOS_PrintCpuUsage()*. For printing the available heap memory, call *PsiFreeRTOS_PrintHeap()*. For printing the stack watermarks for each task, call *PsiFreeRTOS_PrintStackWatermark()*.
+CPU load is measured over regular time intervals defined by the *FreeRTOSConfig.h* constant *configPSI_CPU_LOAD_UPDATE_RATE_TICKS*. The last CPU load measurement can be printed using *PsiFreeRTOS_PrintCpuUsage()*. Additionally CPU load per task can be read at runtime using the function *PsiFreeRTOS_GetCpuLoad()*. For printing the available heap memory, call *PsiFreeRTOS_PrintHeap()*. For printing the stack watermarks for each task, call *PsiFreeRTOS_PrintStackWatermark()*.
 
 
 ### Stack Overflow Detection
@@ -70,7 +70,6 @@ Failing mallocs are detected by FreeRTOS. the *PsiFreeRTOS* registers the hook *
 
 If the idle-task does not get any processing time for a specified number of ticks, an endless loop is detected and an error as well as the most recent CPU load is printed and the operation is stopped.
 
-Note that CPU usage is measured with 32-bit counters. To prevent overflows after longer run-times, the *PsiFreeRTOS* library resets these counters whenever the 2^31 clock cycles have passed (at half the overflow-pweriod) within the idle-task. This makes sure that the printed CPU usage makes sense but the time from the last reset to the detection of an endless loop may vary.
 
 To achieve this, *PsiFreeRTOS* registers the hooks *vApplicationIdleHook()* and *vApplicationTickHook()*.
 
@@ -88,14 +87,27 @@ To use the library, the entires below must be present in *FreeRTOSConfig.h*.
 
 ```
 #include "PsiFreeRTOS_Hooks.h"
+
+//Native Free RTOS Configuration
 #define portCONFIGURE_TIMER_FOR_RUN_TIME_STATS() PsiFreerRTOS_CONFIGURE_TIMER_FOR_RUN_TIME_STATS()
 #define portGET_RUN_TIME_COUNTER_VALUE() PsiFreeRTOS_GET_RUN_TIME_COUNTER_VALUE()
 #define traceTASK_CREATE(xTask) PsiFreeRTOS_TASK_CREATE(xTask)
 #define traceTASK_DELETE(xTask) PsiFreeRTOS_TASK_DELETE(xTask)
 #define traceMALLOC( pvAddress, uiSize) PsiFreeRTOS_MALLOC(uiSize)
 #define traceFREE( pvAddress, uiSize) PsiFreeRTOS_FREE(uiSize)
+
+//PSI Port Configuration
 #define configPSI_TIMER_RUNTIME_STATS_ID XPAR_XTTCPS_1_DEVICE_ID //Choose any free TTCPS device you want
+#define configPSI_MAX_TASKS 32 //Choose the number of tasks to be supported (keep number low for small memory footprint)
+#define configPSI_MAX_TICKS_WITHOUT_IDLE 50 //Number of ticks without time for idle task to detect inifinte loops
+#define configPSI_CPU_LOAD_UPDATE_RATE_TICKS 100 //CPU load statistics update rate (do not overflow 32-bit performance counters)
 ```
+
+The CPU load is measured using a 32-bit counter. The counting frequency depends on configuration of the PS but by default it is 100 MHz. Always set the constants *configPSI_MAX_TICKS_WITHOUT_IDLE* and *configPSI_CPU_LOAD_UPDATE_RATE_TICKS* in such a way that:
+
+*configPSI_MAX_TICKS_WITHOUT_IDLE + configPSI_CPU_LOAD_UPDATE_RATE_TICKS < Timer Overflow Time*
+
+Otherwise CPU load measurement may be wrong. If no special requirements are present, using one second for both values is a good starting point.
 
 ## Common Pitfalls
 

@@ -171,7 +171,17 @@ void FreeRTOS_ClearTickInterrupt( void );
 /*******************************************************************************************
  * Psi Specific Configuration
  *******************************************************************************************/
+//Timer to be used for runtime statistics measurement
 #define configPSI_TIMER_RUNTIME_STATS_ID XPAR_XTTCPS_1_DEVICE_ID
+
+//Maximum number of tasks supported by PsiFreeRTOS
+#define configPSI_MAX_TASKS 32
+
+//Number of ticks without time for the idle-loop before an infinite loop is detected
+#define configPSI_MAX_TICKS_WITHOUT_IDLE 50
+
+//CPU Load Update Tate in Ticks (shall be chosen enough to not cause 32-bit counter overflows)
+#define configPSI_CPU_LOAD_UPDATE_RATE_TICKS 100
 
 
 #ifdef FREERTOS_ENABLE_TRACE

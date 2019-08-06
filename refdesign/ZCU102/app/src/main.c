@@ -76,9 +76,6 @@ void Task_Menu(void* arg_p) {
 	xTaskCreate(Task_Load, "Load1", 400,  (void*)10, 1, NULL);
 	xTaskCreate(Task_Load, "Load2", 400, (void*)10000, 1, NULL);
 
-	//Reset measurement counter to see statistics during actual use (not during creation)
-	PsiFreeRTOS_StartCpuUsageMeas();
-
 	//Create tasks required only for given tests
 	switch (c) {
 	case 's':
@@ -86,9 +83,6 @@ void Task_Menu(void* arg_p) {
 		break;
 	case 'd':
 		xTaskCreate(Task_NoLoad, "*Test Task", 400, NULL, 1, &task1);
-		break;
-	case 'c':
-		PsiFreeRTOS_StartCpuUsageMeas();
 		break;
 	case 'm':
 		xTaskCreate(Task_MallocFail, "MallocTask", 400, NULL, 1, NULL);
@@ -100,7 +94,7 @@ void Task_Menu(void* arg_p) {
 	}
 
 	//Run Test for a while
-	vTaskDelay(100);
+	vTaskDelay(150);
 
 	//Execute Post Test
 	switch (c) {
@@ -116,6 +110,9 @@ void Task_Menu(void* arg_p) {
 		break;
 	case 'c':
 		PsiFreeRTOS_PrintCpuUsage();
+		PsiFreeRTOS_printf("\r\n");
+		uint8_t idleLoad = PsiFreeRTOS_GetCpuLoad(xTaskGetIdleTaskHandle());
+		PsiFreeRTOS_printf("Idle Load: %d%%\r\n", idleLoad);
 		break;
 	case 'h':
 		PsiFreeRTOS_printf("BEFORE NEW TASK CREATED\r\n");
@@ -141,7 +138,7 @@ void FatalHandler(const PsiFreeRTOS_FatalReason reason) {
 
 int main() {
 	//Initialize
-	PsiFreeRTOS_Init(32, 50, FatalHandler);
+	PsiFreeRTOS_Init(FatalHandler, NULL);
 
 	//Create tasks
 	xTaskCreate(Task_Menu, "Menu", 1000, NULL, 0, NULL);
