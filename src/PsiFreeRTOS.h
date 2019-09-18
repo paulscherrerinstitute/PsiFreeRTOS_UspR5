@@ -38,9 +38,13 @@ typedef void (*PsiFreeRTOS_TickHandler)(void);
 #ifdef USE_STDIO_PRINTF
 	#include <stdio.h>
 	#define printfInt(...) printf(__VA_ARGS__)
+	#define putcharInt(c) putchar(c)
+    #define getcharInt() getchar()
 #else
 	#include <xil_printf.h>
 	#define printfInt(...) xil_printf(__VA_ARGS__)
+	#define putcharInt(c) outbyte(c)
+	#define getcharInt() inbyte()
 #endif
 
 SemaphoreHandle_t PsiFreeRTOS_printMutex;
@@ -49,6 +53,18 @@ SemaphoreHandle_t PsiFreeRTOS_printMutex;
 	xSemaphoreTake(PsiFreeRTOS_printMutex, portMAX_DELAY); \
 	printfInt(__VA_ARGS__); \
 	xSemaphoreGive(PsiFreeRTOS_printMutex);}
+
+#define PsiFreeRTOS_putchar(c) { \
+	xSemaphoreTake(PsiFreeRTOS_printMutex, portMAX_DELAY); \
+	putcharInt(c); \
+	xSemaphoreGive(PsiFreeRTOS_printMutex);}
+
+#define PsiFreeRTOS_getchar() ({ \
+	xSemaphoreTake(PsiFreeRTOS_printMutex, portMAX_DELAY); \
+	char c = getcharInt(); \
+	xSemaphoreGive(PsiFreeRTOS_printMutex); \
+	c;})
+
 
 
 /*******************************************************************************************
