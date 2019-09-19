@@ -311,3 +311,7 @@ void PsiFreeRTOS_Init(	PsiFreeRTOS_FatalHandler fatalHandler_p,
 void PsiFreeRTOS_PrintHeap() {
 	printfInt("PsiFreeRTOS FreeHeap [bytes]:%d\r\n", remainingHeap);
 }
+
+unsigned long PsiFreeRTOS_GetHeap() {
+	return remainingHeap;
+}

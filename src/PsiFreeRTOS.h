@@ -121,4 +121,12 @@ void PsiFreeRTOS_Init(	PsiFreeRTOS_FatalHandler fatalHandler_p,
 */
 void PsiFreeRTOS_PrintHeap();
 
+/**
+* @brief Return remaining heap memor. Note that this does not say anything about fragmentation
+*        but only about the number of bytes available.
+*
+* @return	Remaining heap size in bytes
+*/
+unsigned long PsiFreeRTOS_GetHeap();
+
 
