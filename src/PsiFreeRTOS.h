@@ -53,18 +53,18 @@ SemaphoreHandle_t PsiFreeRTOS_printMutex;
 //... this is useful if an existing function could potentially print. In this case
 //... the existing code does not have to be modified (i.e. printf() does not have to be changed to PsiFreeRTOS_printf()
 #define PSI_FREERTOS_LOCKED_PRINT(x) { \
-		xSemaphoreTake(PsiFreeRTOS_printMutex, portMAX_DELAY); \
+		xSemaphoreTakeRecursive(PsiFreeRTOS_printMutex, portMAX_DELAY); \
 		x; \
-		xSemaphoreGive(PsiFreeRTOS_printMutex);}
+		xSemaphoreGiveRecursive(PsiFreeRTOS_printMutex);}
 
 #define PsiFreeRTOS_printf(...) PSI_FREERTOS_LOCKED_PRINT(printfInt(__VA_ARGS__))
 
 #define PsiFreeRTOS_putchar(c) PSI_FREERTOS_LOCKED_PRINT(putcharInt(c))
 
 #define PsiFreeRTOS_getchar() ({ \
-	xSemaphoreTake(PsiFreeRTOS_printMutex, portMAX_DELAY); \
+	xSemaphoreTakeRecursive(PsiFreeRTOS_printMutex, portMAX_DELAY); \
 	char c = getcharInt(); \
-	xSemaphoreGive(PsiFreeRTOS_printMutex); \
+	xSemaphoreGiveRecursive(PsiFreeRTOS_printMutex); \
 	c;})
 
 

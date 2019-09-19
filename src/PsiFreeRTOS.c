@@ -260,7 +260,7 @@ void vApplicationTickHook() {
 
 void PsiFreeRTOS_Init(	PsiFreeRTOS_FatalHandler fatalHandler_p,
 						PsiFreeRTOS_TickHandler tickHandler_p) {
-	PsiFreeRTOS_printMutex = xSemaphoreCreateMutex();
+	PsiFreeRTOS_printMutex = xSemaphoreCreateRecursiveMutex();
 	taskCount = 0;
 	remainingHeap = configTOTAL_HEAP_SIZE;
 	lastIdleTime = 0;
