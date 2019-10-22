@@ -11,6 +11,7 @@ extern "C" {
 #include "task.h"
 #include "semphr.h"
 #include <stdint.h>
+#include "xscugic.h"
 
 /*******************************************************************************************
  * Types
@@ -133,6 +134,14 @@ void PsiFreeRTOS_PrintHeap();
 * @return	Remaining heap size in bytes
 */
 unsigned long PsiFreeRTOS_GetHeap();
+
+/**
+ * The Xilinx FreeRTOS Port initializeds the GIC interrupt controller. This function allows getting
+ * the instance pointer of the GIC to register additional IRQs.
+ *
+ * @return Pointer to the XScuGic instance
+ */
+XScuGic* PsiFreeRTOS_GetXScuGic();
 
 #ifdef __cplusplus
 }

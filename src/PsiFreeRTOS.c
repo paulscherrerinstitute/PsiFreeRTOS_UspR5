@@ -316,3 +316,8 @@ void PsiFreeRTOS_PrintHeap() {
 unsigned long PsiFreeRTOS_GetHeap() {
 	return remainingHeap;
 }
+
+extern XScuGic xInterruptController; //defined in portZynqUltrascale.c
+XScuGic* PsiFreeRTOS_GetXScuGic() {
+	return &xInterruptController;
+}
