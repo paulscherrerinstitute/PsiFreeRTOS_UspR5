@@ -1,4 +1,9 @@
 #pragma once
+
+#ifdef __cplusplus
+extern "C" {
+#endif
+
 /*******************************************************************************************
  * Includes
  *******************************************************************************************/
@@ -47,7 +52,7 @@ typedef void (*PsiFreeRTOS_TickHandler)(void);
 	#define getcharInt() inbyte()
 #endif
 
-SemaphoreHandle_t PsiFreeRTOS_printMutex;
+extern SemaphoreHandle_t PsiFreeRTOS_printMutex;
 
 //Execute code with the print-protection mutex locked
 //... this is useful if an existing function could potentially print. In this case
@@ -128,5 +133,9 @@ void PsiFreeRTOS_PrintHeap();
 * @return	Remaining heap size in bytes
 */
 unsigned long PsiFreeRTOS_GetHeap();
+
+#ifdef __cplusplus
+}
+#endif
 
 

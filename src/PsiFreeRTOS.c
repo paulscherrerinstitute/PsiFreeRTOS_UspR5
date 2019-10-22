@@ -23,6 +23,7 @@ static volatile TickType_t lastIdleTime;
 static XTtcPs xTimerInstance;
 static PsiFreeRTOS_FatalHandler fatalErrorHandler_p;
 static PsiFreeRTOS_TickHandler userTickHandler_p;
+SemaphoreHandle_t PsiFreeRTOS_printMutex;
 
 /*******************************************************************************************
  * Private Helper Functions
