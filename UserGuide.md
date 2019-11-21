@@ -57,6 +57,7 @@ FreeRTOS must always be compiled as C-code. C\++ compilers are more restrictive 
 7. Link your application project agains teh library project
   * Add path to the directory containing the *libpsi_freertos.a* file to the Library search path (-L) of the linker
   * Add the library to the linker (-l psi\_freertos)
+8. Copy the file *port_asm_vector.S* from  the *src* folder of this repository to the source location of your application project. This file initializes the IRQ vectors (so without it IRQs don't work and hence the FreeRTOS Scheduler does not run).
 8. Before starting the scheduler, call *PsiFreeRTOS\_Init()* to initialize the PSI specific code
 
 [<< Back to Index](./README.md)
