@@ -23,6 +23,7 @@ static volatile TickType_t lastIdleTime;
 static XTtcPs xTimerInstance;
 static PsiFreeRTOS_FatalHandler fatalErrorHandler_p;
 static PsiFreeRTOS_TickHandler userTickHandler_p;
+static bool infLoopDet;
 SemaphoreHandle_t PsiFreeRTOS_printMutex;
 
 /*******************************************************************************************
@@ -229,21 +230,23 @@ void vApplicationIdleHook() {
 }
 
 void vApplicationTickHook() {
-	const TickType_t currentTime = xTaskGetTickCountFromISR();
+	if (infLoopDet) {
+		const TickType_t currentTime = xTaskGetTickCountFromISR();
 
-	//Detect an infinite look (in this case, block execution since crash is fatal)
-	if (currentTime - lastIdleTime > configPSI_MAX_TICKS_WITHOUT_IDLE) {
-		//Do not acquire semaphore since no other task may run correctly, hence other
-		//... tasks may not return their semaphorese
-		printfInt("\r\nERROR: One task seems to be hanging (consumes all CPU power) !!!\r\n");
-		#if (configUSE_TRACE_FACILITY && configGENERATE_RUN_TIME_STATS)
-			PsiFreeRTOS_PrintCpuUsageInternal(true);
-		#endif
-		vTaskSuspendAll();
-		if (NULL != fatalErrorHandler_p) {
-			(*fatalErrorHandler_p)(PsiFreeRTOS_FatalReason_InfiniteLoop);
+		//Detect an infinite look (in this case, block execution since crash is fatal)
+		if (currentTime - lastIdleTime > configPSI_MAX_TICKS_WITHOUT_IDLE) {
+			//Do not acquire semaphore since no other task may run correctly, hence other
+			//... tasks may not return their semaphorese
+			printfInt("\r\nERROR: One task seems to be hanging (consumes all CPU power) !!!\r\n");
+			#if (configUSE_TRACE_FACILITY && configGENERATE_RUN_TIME_STATS)
+				PsiFreeRTOS_PrintCpuUsageInternal(true);
+			#endif
+			vTaskSuspendAll();
+			if (NULL != fatalErrorHandler_p) {
+				(*fatalErrorHandler_p)(PsiFreeRTOS_FatalReason_InfiniteLoop);
+			}
+			for(;;){}
 		}
-		for(;;){}
 	}
 
 	//Call user tick hook
@@ -260,7 +263,8 @@ void vApplicationTickHook() {
  *******************************************************************************************/
 
 void PsiFreeRTOS_Init(	PsiFreeRTOS_FatalHandler fatalHandler_p,
-						PsiFreeRTOS_TickHandler tickHandler_p) {
+						PsiFreeRTOS_TickHandler tickHandler_p,
+						bool infLoopDetection) {
 	PsiFreeRTOS_printMutex = xSemaphoreCreateRecursiveMutex();
 	taskCount = 0;
 	remainingHeap = configTOTAL_HEAP_SIZE;
@@ -268,6 +272,7 @@ void PsiFreeRTOS_Init(	PsiFreeRTOS_FatalHandler fatalHandler_p,
 	cpuMeasStartIncr = 0;
 	fatalErrorHandler_p = fatalHandler_p;
 	userTickHandler_p = tickHandler_p;
+	infLoopDet = infLoopDetection;
 }
 
 #if INCLUDE_uxTaskGetStackHighWaterMark
