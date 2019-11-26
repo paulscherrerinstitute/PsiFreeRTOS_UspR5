@@ -15,6 +15,7 @@
  *******************************************************************************************/
 static volatile TaskHandle_t allTasks[configPSI_MAX_TASKS];
 static uint8_t taskCpuLoad[configPSI_MAX_TASKS];
+static uint32_t taskCpuTicks[configPSI_MAX_TASKS];
 static volatile uint16_t taskCount;
 static unsigned long cpuMeasStartIncr;
 static TickType_t cpuMeasStartTicks;
@@ -50,7 +51,7 @@ SemaphoreHandle_t PsiFreeRTOS_printMutex;
 		unsigned long runSum = PsiFreeRTOS_GET_RUN_TIME_COUNTER_VALUE() - cpuMeasStartIncr;
 		unsigned long runSumPercent = runSum/100;
 		printfSel(isIrqContext, "PsiFreeRTOS CPU-Usage:\r\n");
-		printfSel(isIrqContext, "%-20s %4s %3s\r\n", "Name", "CPU%", "Prio");
+		printfSel(isIrqContext, "%-20s %4s %5s %10s\r\n", "Name", "CPU%", "Prio", "Cycles");
 		for (uint16_t i = 0; ; i++) {
 			if (!isIrqContext) {
 				taskENTER_CRITICAL();
@@ -65,17 +66,21 @@ SemaphoreHandle_t PsiFreeRTOS_printMutex;
 			vTaskGetInfo(hndl, &status, pdFALSE, eBlocked);
 			//Use pre-calculated value if called from normal context, calculate fresh value during crash analysis
 			uint8_t cpuLoad;
+			uint32_t cpuTicks;
 			if (!isIrqContext) {
 				cpuLoad = taskCpuLoad[i];
+				cpuTicks = taskCpuTicks[i];
 			}
 			else {
 				cpuLoad = (uint8_t)(status.ulRunTimeCounter/runSumPercent);
+				cpuTicks = status.ulRunTimeCounter;
 			}
 			//Print
-			printfSel(isIrqContext, "%-20s %3d%% %d\r\n",
+			printfSel(isIrqContext, "%-20s %3d%% %5d %10d\r\n",
 									status.pcTaskName,
 									cpuLoad,
-									status.uxBasePriority);
+									status.uxBasePriority,
+									cpuTicks);
 		}
 		XTtcPs_Start( &xTimerInstance );
 	}
@@ -113,6 +118,7 @@ void PsiFreeRTOS_TASK_CREATE(const TaskHandle_t task) {
 
 	allTasks[taskCount] = task;
 	taskCpuLoad[taskCount] = 0;
+	taskCpuTicks[taskCount] = 0;
 	taskCount++;
 
 	taskEXIT_CRITICAL();
@@ -220,6 +226,7 @@ void vApplicationIdleHook() {
 
 				vTaskGetInfo(hndl, &status, pdFALSE, eBlocked);
 				taskCpuLoad[i] = (uint8_t)(status.ulRunTimeCounter/runSumDiv);
+				taskCpuTicks[i] = status.ulRunTimeCounter;
 			}
 			XTtcPs_Start( &xTimerInstance );
 
