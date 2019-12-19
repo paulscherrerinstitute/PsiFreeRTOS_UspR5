@@ -1,7 +1,10 @@
 # General Information
 
 ## Maintainer
-Oliver Bründler [oliver.bruendler@psi.ch]
+Roger Biffiger [roger.biffiger@psi.ch]
+
+## Author
+Oliver Bründler [oli.bruendler@gmx.ch]
 
 ## Changelog
 See [Changelog](Changelog.md)
