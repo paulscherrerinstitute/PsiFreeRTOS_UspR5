@@ -138,7 +138,7 @@ void FatalHandler(const PsiFreeRTOS_FatalReason reason) {
 
 int main() {
 	//Initialize
-	PsiFreeRTOS_Init(FatalHandler, NULL);
+	PsiFreeRTOS_Init(FatalHandler, NULL, true);
 
 	//Create tasks
 	xTaskCreate(Task_Menu, "Menu", 1000, NULL, 0, NULL);

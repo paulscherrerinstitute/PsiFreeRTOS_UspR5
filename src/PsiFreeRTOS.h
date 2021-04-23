@@ -12,6 +12,7 @@ extern "C" {
 #include "semphr.h"
 #include <stdint.h>
 #include "xscugic.h"
+#include <stdbool.h>
 
 /*******************************************************************************************
  * Types
@@ -90,9 +91,11 @@ extern SemaphoreHandle_t PsiFreeRTOS_printMutex;
  *                              Pass NULL if unused.
  * @param tickHandler_p			Function to be called on every tick (since FreeRTOS tick hook is occupied by PsiFreeRTOS).
  * 								Pass NULL if unused.
+ * @param infLoopDetection		True = throw errors when infinite loops are detected, False = disable inifinite loop detection
  */
 void PsiFreeRTOS_Init(	PsiFreeRTOS_FatalHandler fatalHandler_p,
-						PsiFreeRTOS_TickHandler tickHandler_p);
+						PsiFreeRTOS_TickHandler tickHandler_p,
+						bool infLoopDetection);
 
 #if INCLUDE_uxTaskGetStackHighWaterMark
 	/**

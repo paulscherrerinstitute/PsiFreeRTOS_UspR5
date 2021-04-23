@@ -15,6 +15,7 @@
  *******************************************************************************************/
 static volatile TaskHandle_t allTasks[configPSI_MAX_TASKS];
 static uint8_t taskCpuLoad[configPSI_MAX_TASKS];
+static uint32_t taskCpuTicks[configPSI_MAX_TASKS];
 static volatile uint16_t taskCount;
 static unsigned long cpuMeasStartIncr;
 static TickType_t cpuMeasStartTicks;
@@ -23,6 +24,7 @@ static volatile TickType_t lastIdleTime;
 static XTtcPs xTimerInstance;
 static PsiFreeRTOS_FatalHandler fatalErrorHandler_p;
 static PsiFreeRTOS_TickHandler userTickHandler_p;
+static bool infLoopDet;
 SemaphoreHandle_t PsiFreeRTOS_printMutex;
 
 /*******************************************************************************************
@@ -49,7 +51,7 @@ SemaphoreHandle_t PsiFreeRTOS_printMutex;
 		unsigned long runSum = PsiFreeRTOS_GET_RUN_TIME_COUNTER_VALUE() - cpuMeasStartIncr;
 		unsigned long runSumPercent = runSum/100;
 		printfSel(isIrqContext, "PsiFreeRTOS CPU-Usage:\r\n");
-		printfSel(isIrqContext, "%-20s %4s %3s\r\n", "Name", "CPU%", "Prio");
+		printfSel(isIrqContext, "%-20s %4s %5s %10s\r\n", "Name", "CPU%", "Prio", "Cycles");
 		for (uint16_t i = 0; ; i++) {
 			if (!isIrqContext) {
 				taskENTER_CRITICAL();
@@ -64,17 +66,21 @@ SemaphoreHandle_t PsiFreeRTOS_printMutex;
 			vTaskGetInfo(hndl, &status, pdFALSE, eBlocked);
 			//Use pre-calculated value if called from normal context, calculate fresh value during crash analysis
 			uint8_t cpuLoad;
+			uint32_t cpuTicks;
 			if (!isIrqContext) {
 				cpuLoad = taskCpuLoad[i];
+				cpuTicks = taskCpuTicks[i];
 			}
 			else {
 				cpuLoad = (uint8_t)(status.ulRunTimeCounter/runSumPercent);
+				cpuTicks = status.ulRunTimeCounter;
 			}
 			//Print
-			printfSel(isIrqContext, "%-20s %3d%% %d\r\n",
+			printfSel(isIrqContext, "%-20s %3d%% %5d %10d\r\n",
 									status.pcTaskName,
 									cpuLoad,
-									status.uxBasePriority);
+									status.uxBasePriority,
+									cpuTicks);
 		}
 		XTtcPs_Start( &xTimerInstance );
 	}
@@ -112,6 +118,7 @@ void PsiFreeRTOS_TASK_CREATE(const TaskHandle_t task) {
 
 	allTasks[taskCount] = task;
 	taskCpuLoad[taskCount] = 0;
+	taskCpuTicks[taskCount] = 0;
 	taskCount++;
 
 	taskEXIT_CRITICAL();
@@ -219,6 +226,7 @@ void vApplicationIdleHook() {
 
 				vTaskGetInfo(hndl, &status, pdFALSE, eBlocked);
 				taskCpuLoad[i] = (uint8_t)(status.ulRunTimeCounter/runSumDiv);
+				taskCpuTicks[i] = status.ulRunTimeCounter;
 			}
 			XTtcPs_Start( &xTimerInstance );
 
@@ -229,21 +237,23 @@ void vApplicationIdleHook() {
 }
 
 void vApplicationTickHook() {
-	const TickType_t currentTime = xTaskGetTickCountFromISR();
+	if (infLoopDet) {
+		const TickType_t currentTime = xTaskGetTickCountFromISR();
 
-	//Detect an infinite look (in this case, block execution since crash is fatal)
-	if (currentTime - lastIdleTime > configPSI_MAX_TICKS_WITHOUT_IDLE) {
-		//Do not acquire semaphore since no other task may run correctly, hence other
-		//... tasks may not return their semaphorese
-		printfInt("\r\nERROR: One task seems to be hanging (consumes all CPU power) !!!\r\n");
-		#if (configUSE_TRACE_FACILITY && configGENERATE_RUN_TIME_STATS)
-			PsiFreeRTOS_PrintCpuUsageInternal(true);
-		#endif
-		vTaskSuspendAll();
-		if (NULL != fatalErrorHandler_p) {
-			(*fatalErrorHandler_p)(PsiFreeRTOS_FatalReason_InfiniteLoop);
+		//Detect an infinite look (in this case, block execution since crash is fatal)
+		if (currentTime - lastIdleTime > configPSI_MAX_TICKS_WITHOUT_IDLE) {
+			//Do not acquire semaphore since no other task may run correctly, hence other
+			//... tasks may not return their semaphorese
+			printfInt("\r\nERROR: One task seems to be hanging (consumes all CPU power) !!!\r\n");
+			#if (configUSE_TRACE_FACILITY && configGENERATE_RUN_TIME_STATS)
+				PsiFreeRTOS_PrintCpuUsageInternal(true);
+			#endif
+			vTaskSuspendAll();
+			if (NULL != fatalErrorHandler_p) {
+				(*fatalErrorHandler_p)(PsiFreeRTOS_FatalReason_InfiniteLoop);
+			}
+			for(;;){}
 		}
-		for(;;){}
 	}
 
 	//Call user tick hook
@@ -260,7 +270,8 @@ void vApplicationTickHook() {
  *******************************************************************************************/
 
 void PsiFreeRTOS_Init(	PsiFreeRTOS_FatalHandler fatalHandler_p,
-						PsiFreeRTOS_TickHandler tickHandler_p) {
+						PsiFreeRTOS_TickHandler tickHandler_p,
+						bool infLoopDetection) {
 	PsiFreeRTOS_printMutex = xSemaphoreCreateRecursiveMutex();
 	taskCount = 0;
 	remainingHeap = configTOTAL_HEAP_SIZE;
@@ -268,6 +279,7 @@ void PsiFreeRTOS_Init(	PsiFreeRTOS_FatalHandler fatalHandler_p,
 	cpuMeasStartIncr = 0;
 	fatalErrorHandler_p = fatalHandler_p;
 	userTickHandler_p = tickHandler_p;
+	infLoopDet = infLoopDetection;
 }
 
 #if INCLUDE_uxTaskGetStackHighWaterMark
