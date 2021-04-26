@@ -6,6 +6,9 @@ Roger Biffiger [roger.biffiger@psi.ch]
 ## Author
 Oliver Bründler [oli.bruendler@gmx.ch]
 
+## License
+This library is published under the [MIT license](LICENSE.txt).
+
 ## Changelog
 See [Changelog](Changelog.md)
 
