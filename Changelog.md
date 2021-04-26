@@ -1,3 +1,7 @@
+## 3.0.1
+* Changes
+  * Added license and copyright notice for open sourcing
+
 ## 3.0.0
 * Added Features
   * Added API functions for thread-safe printf/getchar/putchar
