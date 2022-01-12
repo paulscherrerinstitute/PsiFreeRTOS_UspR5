@@ -50,6 +50,9 @@
 	.global FreeRTOS_SWI_Handler
 	.global vPortRestoreTaskContext
 
+
+
+
 .macro portSAVE_CONTEXT
 
 	/* Save the LR and SPSR onto the system mode stack before switching to
@@ -72,6 +75,7 @@
 	/* Save the floating point context, if any. */
 	FMRXNE  R1,  FPSCR
 	VPUSHNE {D0-D15}
+	VPUSHNE	{D16-D31}
 	PUSHNE	{R1}
 
 	/* Save ulPortTaskHasFPUContext itself. */
@@ -102,6 +106,7 @@
 
 	/* Restore the floating point context, if any. */
 	POPNE 	{R0}
+	VPOPNE	{D16-D31}
 	VPOPNE	{D0-D15}
 	VMSRNE  FPSCR, R0
 
@@ -156,7 +161,6 @@ vPortRestoreTaskContext:
 .align 4
 .type FreeRTOS_IRQ_Handler, %function
 FreeRTOS_IRQ_Handler:
-
 	/* Return to the interrupted instruction. */
 	SUB		lr, lr, #4
 
@@ -186,13 +190,13 @@ FreeRTOS_IRQ_Handler:
 	LDR		r0, [r2]
 
 	/* Ensure bit 2 of the stack pointer is clear.  r2 holds the bit 2 value for
-	future use.  _RB_ Is this ever needed provided the start of the stack is
-	aligned on an 8-byte boundary? */
+	future use.  _RB_ Does this ever actually need to be done provided the start
+	of the stack is 8-byte aligned? */
 	MOV		r2, sp
 	AND		r2, r2, #4
 	SUB		sp, sp, r2
 
-	/* Call the interrupt handler. */
+	/* Call the interrupt handler.  r4 pushed to maintain alignment. */
 	PUSH	{r0-r4, lr}
 	LDR		r1, vApplicationIRQHandlerConst
 	BLX		r1
@@ -259,6 +263,46 @@ switch_before_exit:
 	next. */
 	portRESTORE_CONTEXT
 
+
+/******************************************************************************
+ * If the application provides an implementation of vApplicationIRQHandler(),
+ * then it will get called directly without saving the FPU registers on
+ * interrupt entry, and this weak implementation of
+ * vApplicationIRQHandler() will not get called.
+ *
+ * If the application provides its own implementation of
+ * vApplicationFPUSafeIRQHandler() then this implementation of
+ * vApplicationIRQHandler() will be called, save the FPU registers, and then
+ * call vApplicationFPUSafeIRQHandler().
+ *
+ * Therefore, if the application writer wants FPU registers to be saved on
+ * interrupt entry their IRQ handler must be called
+ * vApplicationFPUSafeIRQHandler(), and if the application writer does not want
+ * FPU registers to be saved on interrupt entry their IRQ handler must be
+ * called vApplicationIRQHandler().
+ *****************************************************************************/
+
+.align 4
+.weak vApplicationIRQHandler
+.type vApplicationIRQHandler, %function
+vApplicationIRQHandler:
+	PUSH	{LR}
+	FMRX	R1,  FPSCR
+	VPUSH	{D0-D15}
+	VPUSH	{D16-D31}
+	PUSH	{R1}
+
+	LDR		r1, vApplicationFPUSafeIRQHandlerConst
+	BLX		r1
+
+	POP		{R0}
+	VPOP	{D16-D31}
+	VPOP	{D0-D15}
+	VMSR	FPSCR, R0
+
+	POP {PC}
+
+
 ulICCIARConst:	.word ulICCIAR
 ulICCEOIRConst:	.word ulICCEOIR
 ulICCPMRConst: .word ulICCPMR
@@ -269,5 +313,11 @@ ulMaxAPIPriorityMaskConst: .word ulMaxAPIPriorityMask
 vTaskSwitchContextConst: .word vTaskSwitchContext
 vApplicationIRQHandlerConst: .word vApplicationIRQHandler
 ulPortInterruptNestingConst: .word ulPortInterruptNesting
+vApplicationFPUSafeIRQHandlerConst: .word vApplicationFPUSafeIRQHandler
 
 .end
+
+
+
+
+

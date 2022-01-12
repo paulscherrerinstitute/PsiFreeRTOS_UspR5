@@ -4,11 +4,11 @@
 #include "PsiFreeRTOS.h"
 #include "FreeRTOSConfig.h"
 #include <stdbool.h>
-#include "xttcps.h"
 #include <xparameters.h>
 #include <xparameters_ps.h>
 #include "timers.h"
 #include "task.h"
+#include "xtime_l.h"
 
 /*******************************************************************************************
  * Private Variables
@@ -21,7 +21,6 @@ static unsigned long cpuMeasStartIncr;
 static TickType_t cpuMeasStartTicks;
 static unsigned long remainingHeap;
 static volatile TickType_t lastIdleTime;
-static XTtcPs xTimerInstance;
 static PsiFreeRTOS_FatalHandler fatalErrorHandler_p;
 static PsiFreeRTOS_TickHandler userTickHandler_p;
 static bool infLoopDet;
@@ -47,7 +46,6 @@ SemaphoreHandle_t PsiFreeRTOS_printMutex;
 
 		//Implementation
 		TaskStatus_t status;
-		XTtcPs_Stop( &xTimerInstance );
 		unsigned long runSum = PsiFreeRTOS_GET_RUN_TIME_COUNTER_VALUE() - cpuMeasStartIncr;
 		unsigned long runSumPercent = runSum/100;
 		printfSel(isIrqContext, "PsiFreeRTOS CPU-Usage:\r\n");
@@ -82,21 +80,18 @@ SemaphoreHandle_t PsiFreeRTOS_printMutex;
 									status.uxBasePriority,
 									cpuTicks);
 		}
-		XTtcPs_Start( &xTimerInstance );
 	}
 #endif
 
 #if (configUSE_TRACE_FACILITY && configGENERATE_RUN_TIME_STATS)
 	void PsiFreeRTOS_StartCpuUsageMeas() {
 		taskENTER_CRITICAL();
-		XTtcPs_Stop( &xTimerInstance );
 		cpuMeasStartIncr = PsiFreeRTOS_GET_RUN_TIME_COUNTER_VALUE();
 		cpuMeasStartTicks = xTaskGetTickCount();
 		for (uint16_t i = 0; i < taskCount; i++) {
 			TaskHandle_t hndl = allTasks[i];
 			vTaskClearRunTimeCounter(hndl);
 		}
-		XTtcPs_Start( &xTimerInstance );
 		taskEXIT_CRITICAL();
 
 	}
@@ -159,27 +154,13 @@ void PsiFreeRTOS_FREE(const unsigned int size) {
 }
 
 void PsiFreerRTOS_CONFIGURE_TIMER_FOR_RUN_TIME_STATS() {
-	int iStatus;
-	XTtcPs_Config* pxTimerConfig = XTtcPs_LookupConfig( configPSI_TIMER_RUNTIME_STATS_ID );
-	iStatus = XTtcPs_CfgInitialize( &xTimerInstance, pxTimerConfig, pxTimerConfig->BaseAddress );
-
-	if( iStatus != XST_SUCCESS )
-	{
-		XTtcPs_Stop(&xTimerInstance);
-		iStatus = XTtcPs_CfgInitialize( &xTimerInstance, pxTimerConfig, pxTimerConfig->BaseAddress );
-		if( iStatus != XST_SUCCESS )
-		{
-			printfInt( "In %s: Timer Cfg initialization failed...\r\n", __func__ );
-			return;
-		}
-	}
-	XTtcPs_SetOptions( &xTimerInstance, XTTCPS_OPTION_WAVE_DISABLE );
-	/* Enable the interrupt for timer. */
-	XTtcPs_Start( &xTimerInstance );
+	//Not required because global counter is used
 }
 
 unsigned long PsiFreeRTOS_GET_RUN_TIME_COUNTER_VALUE() {
-	return XTtcPs_GetCounterValue(&xTimerInstance);
+	XTime t;
+	XTime_GetTime(&t);
+	return (unsigned long)t;
 }
 
 void vApplicationStackOverflowHook(const xTaskHandle pxTask, const signed char *pcTaskName) {
@@ -216,7 +197,6 @@ void vApplicationIdleHook() {
 
 			//Safe CPU load results
 			TaskStatus_t status;
-			XTtcPs_Stop( &xTimerInstance );
 			unsigned long runSum = PsiFreeRTOS_GET_RUN_TIME_COUNTER_VALUE() - cpuMeasStartIncr;
 			unsigned long runSumDiv = runSum/100; //Used to calculate runtime in percent
 			for (uint16_t i = 0; ; i++) {
@@ -232,7 +212,6 @@ void vApplicationIdleHook() {
 				taskCpuLoad[i] = (uint8_t)(status.ulRunTimeCounter/runSumDiv);
 				taskCpuTicks[i] = status.ulRunTimeCounter;
 			}
-			XTtcPs_Start( &xTimerInstance );
 
 			//Restart Measurement
 			PsiFreeRTOS_StartCpuUsageMeas();

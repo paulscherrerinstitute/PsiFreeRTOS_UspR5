@@ -1,7 +1,7 @@
 /*
  * FreeRTOS Kernel V10.3.0
  * Copyright (C) 2020 Amazon.com, Inc. or its affiliates.  All Rights Reserved.
- * Copyright (C) 2014 - 2020 Xilinx, Inc. All rights reserved.
+ * Copyright (C) 2012 - 2020 Xilinx, Inc. All rights reserved.
  *
  * Permission is hereby granted, free of charge, to any person obtaining a copy of
  * this software and associated documentation files (the "Software"), to deal in
@@ -31,10 +31,10 @@
 #include "task.h"
 
 /* Xilinx includes. */
-#include "xil_printf.h"
-#include "xparameters.h"
+#include "xscutimer.h"
 #include "xscugic.h"
-#include "xttcps.h"
+
+#define XSCUTIMER_CLOCK_HZ ( XPAR_CPU_CORTEXA9_0_CPU_CLK_FREQ_HZ / 2UL )
 
 /*
  * Some FreeRTOSConfig.h settings require the application writer to provide the
@@ -53,78 +53,76 @@ void vApplicationMallocFailedHook( void ) __attribute((weak));
 void vApplicationStackOverflowHook( TaskHandle_t xTask, char *pcTaskName ) __attribute__((weak));
 
 /* Timer used to generate the tick interrupt. */
-static XTtcPs xTimerInstance;
-XScuGic xInterruptController;
+static XScuTimer xTimer;
+XScuGic xInterruptController; 	/* Interrupt controller instance */
 /*-----------------------------------------------------------*/
 
 void FreeRTOS_SetupTickInterrupt( void )
 {
-XInterval usInterval;
-uint8_t ucPrescaler;
-int iStatus;
-XTtcPs_Config *pxTimerConfig;
-XScuGic_Config *pxInterruptControllerConfig;
+BaseType_t xStatus;
+extern void FreeRTOS_Tick_Handler( void );
+XScuTimer_Config *pxTimerConfig;
+XScuGic_Config *pxGICConfig;
+const uint8_t ucRisingEdge = 3;
 
-	/* Initialize the interrupt controller driver. */
-	pxInterruptControllerConfig = XScuGic_LookupConfig( configINTERRUPT_CONTROLLER_DEVICE_ID );
-	XScuGic_CfgInitialize( &xInterruptController,
-						   pxInterruptControllerConfig,
-						   pxInterruptControllerConfig->CpuBaseAddress );
+	/* This function is called with the IRQ interrupt disabled, and the IRQ
+	interrupt should be left disabled.  It is enabled automatically when the
+	scheduler is started. */
 
-	/* Connect the interrupt controller interrupt handler to the hardware
-	interrupt handling logic in the ARM processor. */
-	Xil_ExceptionRegisterHandler( XIL_EXCEPTION_ID_IRQ_INT,
-								( Xil_ExceptionHandler ) XScuGic_InterruptHandler,
-								&xInterruptController);
+	/* Ensure XScuGic_CfgInitialize() has been called.  In this demo it has
+	already been called from prvSetupHardware() in main(). */
+	pxGICConfig = XScuGic_LookupConfig( XPAR_SCUGIC_SINGLE_DEVICE_ID );
+	xStatus = XScuGic_CfgInitialize( &xInterruptController, pxGICConfig, pxGICConfig->CpuBaseAddress );
+	configASSERT( xStatus == XST_SUCCESS );
+	( void ) xStatus; /* Remove compiler warning if configASSERT() is not defined. */
 
-	/* Enable interrupts in the ARM. */
-	Xil_ExceptionEnable();
+	/* The priority must be the lowest possible. */
+	XScuGic_SetPriorityTriggerType( &xInterruptController, XPAR_SCUTIMER_INTR, portLOWEST_USABLE_INTERRUPT_PRIORITY << portPRIORITY_SHIFT, ucRisingEdge );
 
-	/* Connect to the interrupt controller. */
-	XScuGic_Connect( &xInterruptController,
-					 configTIMER_INTERRUPT_ID,
-					( Xil_InterruptHandler ) FreeRTOS_Tick_Handler,
-					( void * ) &xTimerInstance );
+	/* Install the FreeRTOS tick handler. */
+	xStatus = XScuGic_Connect( &xInterruptController, XPAR_SCUTIMER_INTR, (Xil_ExceptionHandler) FreeRTOS_Tick_Handler, ( void * ) &xTimer );
+	configASSERT( xStatus == XST_SUCCESS );
+	( void ) xStatus; /* Remove compiler warning if configASSERT() is not defined. */
 
-	pxTimerConfig = XTtcPs_LookupConfig( configTIMER_ID );
+	/* Initialise the timer. */
+	pxTimerConfig = XScuTimer_LookupConfig( XPAR_SCUTIMER_DEVICE_ID );
+	xStatus = XScuTimer_CfgInitialize( &xTimer, pxTimerConfig, pxTimerConfig->BaseAddr );
+	configASSERT( xStatus == XST_SUCCESS );
+	( void ) xStatus; /* Remove compiler warning if configASSERT() is not defined. */
 
-	iStatus = XTtcPs_CfgInitialize( &xTimerInstance, pxTimerConfig, pxTimerConfig->BaseAddress );
+	/* Enable Auto reload mode. */
+	XScuTimer_EnableAutoReload( &xTimer );
 
-	if( iStatus != XST_SUCCESS )
-	{
-		XTtcPs_Stop(&xTimerInstance);
-		iStatus = XTtcPs_CfgInitialize( &xTimerInstance, pxTimerConfig, pxTimerConfig->BaseAddress );
-		if( iStatus != XST_SUCCESS )
-		{
-			xil_printf( "In %s: Timer Cfg initialization failed...\r\n", __func__ );
-			return;
-		}
-	}
-	XTtcPs_SetOptions( &xTimerInstance, XTTCPS_OPTION_INTERVAL_MODE | XTTCPS_OPTION_WAVE_DISABLE );
-	/*
+	/* Ensure there is no prescale. */
+	XScuTimer_SetPrescaler( &xTimer, 0 );
+
+	/* Load the timer counter register.
 	 * The Xilinx implementation of generating run time task stats uses the same timer used for generating
 	 * FreeRTOS ticks. In case user decides to generate run time stats the timer time out interval is changed
 	 * as "configured tick rate * 10". The multiplying factor of 10 is hard coded for Xilinx FreeRTOS ports.
 	 */
 #if (configGENERATE_RUN_TIME_STATS == 1)
-	XTtcPs_CalcIntervalFromFreq( &xTimerInstance, configTICK_RATE_HZ*10, &usInterval, &ucPrescaler );
+	XScuTimer_LoadTimer( &xTimer, XSCUTIMER_CLOCK_HZ / (configTICK_RATE_HZ * 10) );
 #else
-	XTtcPs_CalcIntervalFromFreq( &xTimerInstance, configTICK_RATE_HZ, &usInterval, &ucPrescaler );
+	XScuTimer_LoadTimer( &xTimer, XSCUTIMER_CLOCK_HZ / configTICK_RATE_HZ );
 #endif
-	XTtcPs_SetInterval( &xTimerInstance, usInterval );
-	XTtcPs_SetPrescaler( &xTimerInstance, ucPrescaler );
-	/* Enable the interrupt for timer. */
-	XScuGic_EnableIntr( configINTERRUPT_CONTROLLER_BASE_ADDRESS, configTIMER_INTERRUPT_ID );
-	XTtcPs_EnableInterrupts( &xTimerInstance, XTTCPS_IXR_INTERVAL_MASK );
-	XTtcPs_Start( &xTimerInstance );
 
+	/* Start the timer counter and then wait for it to timeout a number of
+	times. */
+	XScuTimer_Start( &xTimer );
+
+	/* Enable the interrupt for the xTimer in the interrupt controller. */
+	XScuGic_Enable( &xInterruptController, XPAR_SCUTIMER_INTR );
+
+	/* Enable the interrupt in the xTimer itself. */
+	FreeRTOS_ClearTickInterrupt();
+	XScuTimer_EnableInterrupt( &xTimer );
 }
 /*-----------------------------------------------------------*/
 
 void FreeRTOS_ClearTickInterrupt( void )
 {
-
-	XTtcPs_ClearInterruptStatus( &xTimerInstance, XTtcPs_GetInterruptStatus( &xTimerInstance ) );
+	XScuTimer_ClearInterruptStatus( &xTimer );
 }
 /*-----------------------------------------------------------*/
 
@@ -135,13 +133,12 @@ static const XScuGic_VectorTableEntry *pxVectorTable = XScuGic_ConfigTable[ XPAR
 uint32_t ulInterruptID;
 const XScuGic_VectorTableEntry *pxVectorEntry;
 
-	/* The ID of the interrupt is obtained by bitwise ANDing the ICCIAR value
+	/* The ID of the interrupt is obtained by bitwise anding the ICCIAR value
 	with 0x3FF. */
 	ulInterruptID = ulICCIAR & 0x3FFUL;
 	if( ulInterruptID < XSCUGIC_MAX_NUM_INTR_INPUTS )
 	{
-		/* Call the function installed in the array of installed handler
-		functions. */
+		/* Call the function installed in the array of installed handler functions. */
 		pxVectorEntry = &( pxVectorTable[ ulInterruptID ] );
 		pxVectorEntry->Handler( pxVectorEntry->CallBackRef );
 	}

@@ -1,7 +1,6 @@
 /*
  * FreeRTOS Kernel V10.3.0
  * Copyright (C) 2020 Amazon.com, Inc. or its affiliates.  All Rights Reserved.
- * Copyright (C) 2018 - 2020 Xilinx, Inc. All rights reserved.
  *
  * Permission is hereby granted, free of charge, to any person obtaining a copy of
  * this software and associated documentation files (the "Software"), to deal in
@@ -37,23 +36,23 @@
 #include "xscugic.h"
 
 #ifndef configINTERRUPT_CONTROLLER_BASE_ADDRESS
-	#error configINTERRUPT_CONTROLLER_BASE_ADDRESS must be defined.  Refer to Cortex-A equivalent: http://www.freertos.org/Using-FreeRTOS-on-Cortex-A-Embedded-Processors.html
+	#error configINTERRUPT_CONTROLLER_BASE_ADDRESS must be defined.  See http://www.freertos.org/Using-FreeRTOS-on-Cortex-A-Embedded-Processors.html
 #endif
 
 #ifndef configINTERRUPT_CONTROLLER_CPU_INTERFACE_OFFSET
-	#error configINTERRUPT_CONTROLLER_CPU_INTERFACE_OFFSET must be defined.  Refer to Cortex-A equivalent: http://www.freertos.org/Using-FreeRTOS-on-Cortex-A-Embedded-Processors.html
+	#error configINTERRUPT_CONTROLLER_CPU_INTERFACE_OFFSET must be defined.  See http://www.freertos.org/Using-FreeRTOS-on-Cortex-A-Embedded-Processors.html
 #endif
 
 #ifndef configUNIQUE_INTERRUPT_PRIORITIES
-	#error configUNIQUE_INTERRUPT_PRIORITIES must be defined.  Refer to Cortex-A equivalent: http://www.freertos.org/Using-FreeRTOS-on-Cortex-A-Embedded-Processors.html
+	#error configUNIQUE_INTERRUPT_PRIORITIES must be defined.  See http://www.freertos.org/Using-FreeRTOS-on-Cortex-A-Embedded-Processors.html
 #endif
 
 #ifndef configSETUP_TICK_INTERRUPT
-	#error configSETUP_TICK_INTERRUPT() must be defined.  Refer to Cortex-A equivalent: http://www.freertos.org/Using-FreeRTOS-on-Cortex-A-Embedded-Processors.html
+	#error configSETUP_TICK_INTERRUPT() must be defined.  See http://www.freertos.org/Using-FreeRTOS-on-Cortex-A-Embedded-Processors.html
 #endif /* configSETUP_TICK_INTERRUPT */
 
 #ifndef configMAX_API_CALL_INTERRUPT_PRIORITY
-	#error configMAX_API_CALL_INTERRUPT_PRIORITY must be defined.  Refer to Cortex-A equivalent: http://www.freertos.org/Using-FreeRTOS-on-Cortex-A-Embedded-Processors.html
+	#error configMAX_API_CALL_INTERRUPT_PRIORITY must be defined.  See http://www.freertos.org/Using-FreeRTOS-on-Cortex-A-Embedded-Processors.html
 #endif
 
 #if configMAX_API_CALL_INTERRUPT_PRIORITY == 0
@@ -143,7 +142,7 @@ the CPU itself before modifying certain hardware registers. */
 #define portBIT_0_SET								( ( uint8_t ) 0x01 )
 
 /* Let the user override the pre-loading of the initial LR with the address of
-prvTaskExitError() in case is messes up unwinding of the stack in the
+prvTaskExitError() in case it messes up unwinding of the stack in the
 debugger. */
 #ifdef configTASK_RETURN_ADDRESS
 	#define portTASK_RETURN_ADDRESS	configTASK_RETURN_ADDRESS
@@ -151,12 +150,21 @@ debugger. */
 	#define portTASK_RETURN_ADDRESS	prvTaskExitError
 #endif
 
-/* The space on the stack required to hold the FPU registers.
- * vfpv3-d16 has 16 64 bit registers or 32 32 bit registers. plus
- * a 32 bit status register
- */
-#define portFPU_REGISTER_WORDS ( (16 * 2) + 1)
+/* The space on the stack required to hold the FPU registers.  This is 32 64-bit
+registers, plus a 32-bit status register. */
+#define portFPU_REGISTER_WORDS	( ( 32 * 2 ) + 1 )
+
 /*-----------------------------------------------------------*/
+
+/*
+ * Initialise the interrupt controller instance.
+ */
+static int32_t prvInitialiseInterruptController( void );
+
+/* Ensure the interrupt controller instance variable is initialised before it is
+ * used, and that the initialisation only happens once.
+ */
+static int32_t prvEnsureInterruptControllerIsInitialised( void );
 
 /*
  * Starts the first task executing.  This function is necessarily written in
@@ -169,6 +177,33 @@ extern void vPortRestoreTaskContext( void );
  */
 static void prvTaskExitError( void );
 
+/* 
+ * The instance of the interrupt controller used by this port.  This is required
+ * by the Xilinx library API functions.
+ */
+extern XScuGic xInterruptController;
+
+/*
+ * If the application provides an implementation of vApplicationIRQHandler(),
+ * then it will get called directly without saving the FPU registers on
+ * interrupt entry, and this weak implementation of
+ * vApplicationFPUSafeIRQHandler() is just provided to remove linkage errors -
+ * it should never actually get called so its implementation contains a
+ * call to configASSERT() that will always fail.
+ *
+ * If the application provides its own implementation of
+ * vApplicationFPUSafeIRQHandler() then the implementation of
+ * vApplicationIRQHandler() provided in portASM.S will save the FPU registers
+ * before calling it.
+ *
+ * Therefore, if the application writer wants FPU registers to be saved on
+ * interrupt entry their IRQ handler must be called
+ * vApplicationFPUSafeIRQHandler(), and if the application writer does not want
+ * FPU registers to be saved on interrupt entry their IRQ handler must be
+ * called vApplicationIRQHandler().
+ */
+void vApplicationFPUSafeIRQHandler( uint32_t ulICCIAR ) __attribute__((weak) );
+
 /*-----------------------------------------------------------*/
 
 /* A variable is used to keep track of the critical section nesting.  This
@@ -178,22 +213,16 @@ the scheduler starts.  As it is stored as part of the task context it will
 automatically be set to 0 when the first task is started. */
 volatile uint32_t ulCriticalNesting = 9999UL;
 
-/*
- * The instance of the interrupt controller used by this port.  This is required
- * by the Xilinx library API functions.
- */
-extern XScuGic xInterruptController;
-
 /* Saved as part of the task context.  If ulPortTaskHasFPUContext is non-zero then
 a floating point context must be saved and restored for the task. */
-uint32_t ulPortTaskHasFPUContext = pdFALSE;
+volatile uint32_t ulPortTaskHasFPUContext = pdFALSE;
 
 /* Set to 1 to pend a context switch from an ISR. */
-uint32_t ulPortYieldRequired = pdFALSE;
+volatile uint32_t ulPortYieldRequired = pdFALSE;
 
 /* Counts the interrupt nesting depth.  A context switch is only performed if
 if the nesting depth is 0. */
-uint32_t ulPortInterruptNesting = 0UL;
+volatile uint32_t ulPortInterruptNesting = 0UL;
 /*
  * Global counter used for calculation of run time statistics of tasks.
  * Defined only when the relevant option is turned on
@@ -202,22 +231,13 @@ uint32_t ulPortInterruptNesting = 0UL;
 volatile uint32_t ulHighFrequencyTimerTicks;
 #endif
 
-/* Used in asm code. */
+/* Used in the asm file. */
 __attribute__(( used )) const uint32_t ulICCIAR = portICCIAR_INTERRUPT_ACKNOWLEDGE_REGISTER_ADDRESS;
 __attribute__(( used )) const uint32_t ulICCEOIR = portICCEOIR_END_OF_INTERRUPT_REGISTER_ADDRESS;
 __attribute__(( used )) const uint32_t ulICCPMR	= portICCPMR_PRIORITY_MASK_REGISTER_ADDRESS;
 __attribute__(( used )) const uint32_t ulMaxAPIPriorityMask = ( configMAX_API_CALL_INTERRUPT_PRIORITY << portPRIORITY_SHIFT );
 
 /*-----------------------------------------------------------*/
-/*
- * Initialise the interrupt controller instance.
- */
-static int32_t prvInitialiseInterruptController( void );
-
-/* Ensure the interrupt controller instance variable is initialised before it is
- * used, and that the initialisation only happens once.
- */
-static int32_t prvEnsureInterruptControllerIsInitialised( void );
 
 /*
  * See header file for description.
@@ -284,32 +304,30 @@ StackType_t *pxPortInitialiseStack( StackType_t *pxTopOfStack, TaskFunction_t px
 	enabled. */
 	*pxTopOfStack = portNO_CRITICAL_NESTING;
 
-
-#if (configUSE_TASK_FPU_SUPPORT == 1)
+	#if( configUSE_TASK_FPU_SUPPORT == 1 )
 	{
-	/* The task will start without a floating point context.  A task that uses
-	the floating point hardware must call vPortTaskUsesFPU() before executing
-	any floating point instructions. */
+		/* The task will start without a floating point context.  A task that
+		uses the floating point hardware must call vPortTaskUsesFPU() before
+		executing any floating point instructions. */
 		pxTopOfStack--;
-	*pxTopOfStack = portNO_FLOATING_POINT_CONTEXT;
+		*pxTopOfStack = portNO_FLOATING_POINT_CONTEXT;
 	}
-#elif (configUSE_TASK_FPU_SUPPORT == 2)
+	#elif( configUSE_TASK_FPU_SUPPORT == 2 )
 	{
-		/* The task will start with a floating point context.
-		 * Leave enough space for FPU registers and ensure that they are zeroed out.
-		 */
+		/* The task will start with a floating point context.  Leave enough
+		space for the registers - and ensure they are initialised to 0. */
 		pxTopOfStack -= portFPU_REGISTER_WORDS;
-		memset(pxTopOfStack, 0x00, portFPU_REGISTER_WORDS * sizeof(StackType_t));
+		memset( pxTopOfStack, 0x00, portFPU_REGISTER_WORDS * sizeof( StackType_t ) );
 
 		pxTopOfStack--;
 		*pxTopOfStack = pdTRUE;
 		ulPortTaskHasFPUContext = pdTRUE;
 	}
-#else
+	#else
 	{
-		#error Invalid configUSE_TASK_FPU_SUPPORT setting - configUSE_TASK_FPU_SUPPORT must be set to 1, 2, or left undefined
+		#error Invalid configUSE_TASK_FPU_SUPPORT setting - configUSE_TASK_FPU_SUPPORT must be set to 1, 2, or left undefined.
 	}
-#endif
+	#endif
 
 	return pxTopOfStack;
 }
@@ -333,8 +351,7 @@ BaseType_t xPortInstallInterruptHandler( uint8_t ucInterruptID, XInterruptHandle
 {
 int32_t lReturn;
 
-	/* An API function is provided to install an interrupt handler because the
-	interrupt controller instance variable is private to this file. */
+	/* An API function is provided to install an interrupt handler */
 	lReturn = prvEnsureInterruptControllerIsInitialised();
 	if( lReturn == pdPASS )
 	{
@@ -345,7 +362,7 @@ int32_t lReturn;
 		lReturn = pdPASS;
 	}
 	configASSERT( lReturn == pdPASS );
-
+	
 	return lReturn;
 }
 /*-----------------------------------------------------------*/
@@ -381,16 +398,8 @@ BaseType_t xStatus;
 XScuGic_Config *pxGICConfig;
 
 	/* Initialize the interrupt controller driver. */
-	pxGICConfig = XScuGic_LookupConfig( configINTERRUPT_CONTROLLER_DEVICE_ID );
-	xStatus = XScuGic_CfgInitialize( &xInterruptController, pxGICConfig, pxGICConfig->CpuBaseAddress );
-	/* Connect the interrupt controller interrupt handler to the hardware
-	interrupt handling logic in the ARM processor. */
-	Xil_ExceptionRegisterHandler( XIL_EXCEPTION_ID_IRQ_INT,
-								( Xil_ExceptionHandler ) XScuGic_InterruptHandler,
-								&xInterruptController);
-	/* Enable interrupts in the ARM. */
-	Xil_ExceptionEnable();
-
+	pxGICConfig = XScuGic_LookupConfig( XPAR_SCUGIC_SINGLE_DEVICE_ID );
+	xStatus = XScuGic_CfgInitialize( &xInterruptController, pxGICConfig, pxGICConfig->CpuBaseAddress );	
 		if( xStatus == XST_SUCCESS )
 		{
 			xStatus = pdPASS;
@@ -398,7 +407,7 @@ XScuGic_Config *pxGICConfig;
 		else
 		{
 			xStatus = pdFAIL;
-		}
+		}	
 	configASSERT( xStatus == pdPASS );
 
 	return xStatus;
@@ -415,7 +424,7 @@ int32_t lReturn;
 	if( lReturn == pdPASS )
 	{
 		XScuGic_Enable( &xInterruptController, ucInterruptID );
-	}
+	}	
 	configASSERT( lReturn );
 }
 /*-----------------------------------------------------------*/
@@ -437,7 +446,7 @@ int32_t lReturn;
 
 BaseType_t xPortStartScheduler( void )
 {
-uint32_t ulAPSR, ulCycles = 8; /* 8 bits per byte. */
+uint32_t ulAPSR;
 
 	#if( configASSERT_DEFINED == 1 )
 	{
@@ -461,19 +470,18 @@ uint32_t ulAPSR, ulCycles = 8; /* 8 bits per byte. */
 		while( ( ucMaxPriorityValue & portBIT_0_SET ) != portBIT_0_SET )
 		{
 			ucMaxPriorityValue >>= ( uint8_t ) 0x01;
-
-			/* If ulCycles reaches 0 then ucMaxPriorityValue must have been
-			read as 0, indicating a misconfiguration. */
-			ulCycles--;
-			if( ulCycles == 0 )
-			{
-				break;
-			}
 		}
 
+		/* Sanity check configUNIQUE_INTERRUPT_PRIORITIES matches the read
+		value. */
+		configASSERT( ucMaxPriorityValue == portLOWEST_INTERRUPT_PRIORITY );
+
+		/* Restore the clobbered interrupt priority register to its original
+		value. */
 		*pucFirstUserPriorityRegister = ulOriginalPriority;
 	}
 	#endif /* conifgASSERT_DEFINED */
+
 
 	/* Only continue if the CPU is not in User mode.  The CPU must be in a
 	Privileged mode for the scheduler to start. */
@@ -602,19 +610,22 @@ void FreeRTOS_Tick_Handler( void )
 	configCLEAR_TICK_INTERRUPT();
 }
 /*-----------------------------------------------------------*/
-#if (configUSE_TASK_FPU_SUPPORT != 2)
-void vPortTaskUsesFPU( void )
-{
-uint32_t ulInitialFPSCR = 0;
 
-	/* A task is registering the fact that it needs an FPU context.  Set the
-	FPU flag (which is saved as part of the task context). */
-	ulPortTaskHasFPUContext = pdTRUE;
+#if( configUSE_TASK_FPU_SUPPORT != 2 )
 
-	/* Initialise the floating point status register. */
-	__asm volatile ( "FMXR 	FPSCR, %0" :: "r" (ulInitialFPSCR) : "memory" );
-}
-#endif
+	void vPortTaskUsesFPU( void )
+	{
+	uint32_t ulInitialFPSCR = 0;
+
+		/* A task is registering the fact that it needs an FPU context.  Set the
+		FPU flag (which is saved as part of the task context). */
+		ulPortTaskHasFPUContext = pdTRUE;
+
+		/* Initialise the floating point status register. */
+		__asm volatile ( "FMXR 	FPSCR, %0" :: "r" (ulInitialFPSCR) : "memory" );
+	}
+
+#endif /* configUSE_TASK_FPU_SUPPORT */
 /*-----------------------------------------------------------*/
 
 void vPortClearInterruptMask( uint32_t ulNewMaskValue )
@@ -669,7 +680,6 @@ uint32_t ulReturn;
 
 		FreeRTOS maintains separate thread and ISR API functions to ensure
 		interrupt entry is as fast and simple as possible. */
-
 		configASSERT( portICCRPR_RUNNING_PRIORITY_REGISTER >= ( uint32_t ) ( configMAX_API_CALL_INTERRUPT_PRIORITY << portPRIORITY_SHIFT ) );
 
 		/* Priority grouping:  The interrupt controller (GIC) allows the bits
@@ -686,6 +696,13 @@ uint32_t ulReturn;
 	}
 
 #endif /* configASSERT_DEFINED */
+/*-----------------------------------------------------------*/
+
+void vApplicationFPUSafeIRQHandler( uint32_t ulICCIAR )
+{
+	( void ) ulICCIAR;
+	configASSERT( ( volatile void * ) NULL );
+}
 
 #if( configGENERATE_RUN_TIME_STATS == 1 )
 /*
@@ -707,4 +724,3 @@ uint32_t xGET_RUN_TIME_COUNTER_VALUE (void)
 	return ulHighFrequencyTimerTicks;
 }
 #endif
-/*-----------------------------------------------------------*/

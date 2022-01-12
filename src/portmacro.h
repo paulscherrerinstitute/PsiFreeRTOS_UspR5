@@ -1,7 +1,6 @@
 /*
  * FreeRTOS Kernel V10.3.0
  * Copyright (C) 2020 Amazon.com, Inc. or its affiliates.  All Rights Reserved.
- * Copyright (C) 2018 - 2020 Xilinx, Inc. All rights reserved.
  *
  * Permission is hereby granted, free of charge, to any person obtaining a copy of
  * this software and associated documentation files (the "Software"), to deal in
@@ -167,14 +166,20 @@ void vPortEnableInterrupt( uint8_t ucInterruptID );
  * file, which is itself part of the BSP project.
  */
 void vPortDisableInterrupt( uint8_t ucInterruptID );
-#if (configUSE_TASK_FPU_SUPPORT != 2)
-/* Any task that uses the floating point unit MUST call vPortTaskUsesFPU()
-before any floating point instructions are executed. */
-void vPortTaskUsesFPU( void );
-#define portTASK_USES_FLOATING_POINT() vPortTaskUsesFPU()
+
+/* If configUSE_TASK_FPU_SUPPORT is set to 1 (or left undefined) then tasks are
+created without an FPU context and must call vPortTaskUsesFPU() to give
+themselves an FPU context before using any FPU instructions.  If
+configUSE_TASK_FPU_SUPPORT is set to 2 then all tasks will have an FPU context
+by default. */
+#if( configUSE_TASK_FPU_SUPPORT != 2 )
+	void vPortTaskUsesFPU( void );
 #else
-#define portTASK_USES_FLOATING_POINT()
+	/* Each task has an FPU context already, so define this function away to
+	nothing to prevent it being called accidentally. */
+	#define vPortTaskUsesFPU()
 #endif
+#define portTASK_USES_FLOATING_POINT() vPortTaskUsesFPU()
 
 #define portLOWEST_INTERRUPT_PRIORITY ( ( ( uint32_t ) configUNIQUE_INTERRUPT_PRIORITIES ) - 1UL )
 #define portLOWEST_USABLE_INTERRUPT_PRIORITY ( portLOWEST_INTERRUPT_PRIORITY - 1UL )
@@ -192,7 +197,7 @@ void vPortTaskUsesFPU( void );
 
 	/*-----------------------------------------------------------*/
 
-	#define portGET_HIGHEST_PRIORITY( uxTopPriority, uxReadyPriorities ) uxTopPriority = ( 31 - __builtin_clz( uxReadyPriorities ) )
+	#define portGET_HIGHEST_PRIORITY( uxTopPriority, uxReadyPriorities ) uxTopPriority = ( 31UL - ( uint32_t ) __builtin_clz( uxReadyPriorities ) )
 
 #endif /* configUSE_PORT_OPTIMISED_TASK_SELECTION */
 
@@ -202,7 +207,7 @@ void vPortTaskUsesFPU( void );
 #endif /* configASSERT */
 
 #define portNOP() __asm volatile( "NOP" )
-
+#define portINLINE __inline
 
 #ifdef __cplusplus
 	} /* extern C */
