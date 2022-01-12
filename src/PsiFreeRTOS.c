@@ -1,8 +1,4 @@
 /*******************************************************************************************
- * Copyright (c) 2019 Paul Scherrer Institute, Oliver Bründler
- *******************************************************************************************/
-
-/*******************************************************************************************
  * Includes
  *******************************************************************************************/
 #include "PsiFreeRTOS.h"
@@ -109,7 +105,9 @@ SemaphoreHandle_t PsiFreeRTOS_printMutex;
 /*******************************************************************************************
  * FreeRTOS Hook Functions
  *******************************************************************************************/
-void PsiFreeRTOS_TASK_CREATE(const TaskHandle_t task) {
+void PsiFreeRTOS_TASK_CREATE(void* taskvp) {
+	const TaskHandle_t task = (TaskHandle_t)taskvp;
+
 	taskENTER_CRITICAL();
 
 	//Do use unsafe print because task creation is likely to happen before scheduler is started
@@ -128,7 +126,9 @@ void PsiFreeRTOS_TASK_CREATE(const TaskHandle_t task) {
 	taskEXIT_CRITICAL();
 }
 
-void PsiFreeRTOS_TASK_DELETE(const TaskHandle_t task) {
+void PsiFreeRTOS_TASK_DELETE(void* taskvp) {
+	const TaskHandle_t task = (TaskHandle_t)taskvp;
+
 	taskENTER_CRITICAL();
 
 	//Implementation

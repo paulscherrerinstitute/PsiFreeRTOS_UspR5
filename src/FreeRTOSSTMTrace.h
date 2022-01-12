@@ -1,7 +1,5 @@
 /*
-    Copyright (C) 2016 - 2018 Xilinx, Inc. All rights reserved.
-
-    This file is part of the FreeRTOS distribution.
+    Copyright (C) 2016 - 2020 Xilinx, Inc. All rights reserved.
 
     Permission is hereby granted, free of charge, to any person obtaining a copy of
     this software and associated documentation files (the "Software"), to deal in

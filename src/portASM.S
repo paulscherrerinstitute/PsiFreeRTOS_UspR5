@@ -1,6 +1,6 @@
 /*
- * FreeRTOS Kernel V10.0.0
- * Copyright (C) 2017 Amazon.com, Inc. or its affiliates.  All Rights Reserved.
+ * FreeRTOS Kernel V10.3.0
+ * Copyright (C) 2020 Amazon.com, Inc. or its affiliates.  All Rights Reserved.
  *
  * Permission is hereby granted, free of charge, to any person obtaining a copy of
  * this software and associated documentation files (the "Software"), to deal in
@@ -10,8 +10,7 @@
  * subject to the following conditions:
  *
  * The above copyright notice and this permission notice shall be included in all
- * copies or substantial portions of the Software. If you wish to use our Amazon
- * FreeRTOS name, please do so in a fair use way that does not cause confusion.
+ * copies or substantial portions of the Software.
  *
  * THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
  * IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY, FITNESS
@@ -73,7 +72,6 @@
 	/* Save the floating point context, if any. */
 	FMRXNE  R1,  FPSCR
 	VPUSHNE {D0-D15}
-	/*VPUSHNE	{D16-D31}*/
 	PUSHNE	{R1}
 
 	/* Save ulPortTaskHasFPUContext itself. */
@@ -104,7 +102,6 @@
 
 	/* Restore the floating point context, if any. */
 	POPNE 	{R0}
-	/*VPOPNE	{D16-D31}*/
 	VPOPNE	{D0-D15}
 	VMSRNE  FPSCR, R0
 
@@ -190,7 +187,7 @@ FreeRTOS_IRQ_Handler:
 
 	/* Ensure bit 2 of the stack pointer is clear.  r2 holds the bit 2 value for
 	future use.  _RB_ Is this ever needed provided the start of the stack is
-	alligned on an 8-byte boundary? */
+	aligned on an 8-byte boundary? */
 	MOV		r2, sp
 	AND		r2, r2, #4
 	SUB		sp, sp, r2
@@ -237,7 +234,7 @@ exit_without_switch:
 	MOVS	PC, LR
 
 switch_before_exit:
-	/* A context swtich is to be performed.  Clear the context switch pending
+	/* A context switch is to be performed.  Clear the context switch pending
 	flag. */
 	MOV		r0, #0
 	STR		r0, [r1]

@@ -1,6 +1,7 @@
 /*
- * FreeRTOS Kernel V10.0.0
- * Copyright (C) 2017 Amazon.com, Inc. or its affiliates.  All Rights Reserved.
+ * FreeRTOS Kernel V10.3.0
+ * Copyright (C) 2020 Amazon.com, Inc. or its affiliates.  All Rights Reserved.
+ * Copyright (C) 2018 - 2020 Xilinx, Inc. All rights reserved.
  *
  * Permission is hereby granted, free of charge, to any person obtaining a copy of
  * this software and associated documentation files (the "Software"), to deal in
@@ -10,8 +11,7 @@
  * subject to the following conditions:
  *
  * The above copyright notice and this permission notice shall be included in all
- * copies or substantial portions of the Software. If you wish to use our Amazon
- * FreeRTOS name, please do so in a fair use way that does not cause confusion.
+ * copies or substantial portions of the Software.
  *
  * THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
  * IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY, FITNESS
@@ -74,9 +74,9 @@ typedef uint32_t TickType_t;
 /* Task utilities. */
 
 /* Called at the end of an ISR that can cause a context switch. */
-extern uint32_t ulPortYieldRequired;
 #define portEND_SWITCHING_ISR( xSwitchRequired )\
 {												\
+extern uint32_t ulPortYieldRequired;			\
 												\
 	if( xSwitchRequired != pdFALSE )			\
 	{											\
@@ -104,8 +104,6 @@ interrupts that have a priority below configMAX_API_CALL_INTERRUPT_PRIORITY. */
 #define portEXIT_CRITICAL()			vPortExitCritical();
 #define portDISABLE_INTERRUPTS()	ulPortSetInterruptMask()
 #define portENABLE_INTERRUPTS()		vPortClearInterruptMask( 0 )
-#define portSET_INTERRUPT_MASK_FROM_ISR()		ulPortSetInterruptMask()
-#define portCLEAR_INTERRUPT_MASK_FROM_ISR(x)	vPortClearInterruptMask(x)
 
 /*-----------------------------------------------------------*/
 
@@ -169,11 +167,14 @@ void vPortEnableInterrupt( uint8_t ucInterruptID );
  * file, which is itself part of the BSP project.
  */
 void vPortDisableInterrupt( uint8_t ucInterruptID );
-
+#if (configUSE_TASK_FPU_SUPPORT != 2)
 /* Any task that uses the floating point unit MUST call vPortTaskUsesFPU()
 before any floating point instructions are executed. */
 void vPortTaskUsesFPU( void );
 #define portTASK_USES_FLOATING_POINT() vPortTaskUsesFPU()
+#else
+#define portTASK_USES_FLOATING_POINT()
+#endif
 
 #define portLOWEST_INTERRUPT_PRIORITY ( ( ( uint32_t ) configUNIQUE_INTERRUPT_PRIORITIES ) - 1UL )
 #define portLOWEST_USABLE_INTERRUPT_PRIORITY ( portLOWEST_INTERRUPT_PRIORITY - 1UL )
